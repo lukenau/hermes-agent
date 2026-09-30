@@ -329,6 +329,8 @@ import { buildHudWindowUrl } from './hud-url'
 import { linuxOzoneBackend, resolveHudWindowing } from './hud-windowing'
 import { INSTALL_STAMP, installShape } from './install-stamp'
 import type { InstallStamp } from './install-stamp'
+import { runTimeoutMs } from './installs-cli'
+import { createInstallsNotice, type InstallsRunOutcome, registerInstallsIpc } from './installs-ipc'
 import { applyLaunchProfileOverride } from './launch-profile'
 import { fetchLinkTitle, resolveFaviconCached } from './link-metadata'
 import { CHROMIUM_LOG_FILENAME, enableLinuxCrashDiagnostics, linuxCrashDiagnostics } from './linux-crash-diagnostics'
@@ -13461,6 +13463,19 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       error: null
     })
 
+    // Other-install launch notice: one background list after the backend is
+    // ready, never delaying startup. Windows are only pinged: the renderer may
+    // not have mounted yet, so it pulls the notice (taking it consumes it).
+    installsNotice.check({
+      runInstalls: runInstallsCommand,
+      signalNotice: () => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents?.send?.('hermes:installs:notice')
+        }
+      },
+      logDebug: message => rememberLog(message)
+    })
+
     // A successful boot (including a soft restart that the repair-guard
     // chose over a hard reinstall, see #74874) means any in-flight repair
     // attempt counter has been honoured — reset it so the next genuine
@@ -19092,6 +19107,67 @@ registerDesktopUninstallIpc({
   fallbackSummary: fallbackUninstallSummary,
   probeSummary: probeUninstallSummary,
   runUninstall: runDesktopUninstall
+})
+
+// hermes installs - list, remove, dismiss other installs on this machine.
+const installsNotice = createInstallsNotice()
+
+// Same backend python as the uninstall probe, so `current` is this install.
+function runInstallsCommand(args: string[]): Promise<InstallsRunOutcome> {
+  const py: string = uninstallVenvPython()
+
+  if (!fileExists(py)) {
+    return Promise.resolve({ code: null, stdout: '', stderr: `no Hermes agent venv at ${VENV_ROOT}` })
+  }
+
+  return new Promise<InstallsRunOutcome>(resolve => {
+    let stdout: string = ''
+    let stderr: string = ''
+    let settled: boolean = false
+    let timer: NodeJS.Timeout | undefined
+
+    const done = (outcome: InstallsRunOutcome): void => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        resolve(outcome)
+      }
+    }
+
+    try {
+      const child: ChildProcess = spawn(
+        py,
+        ['-m', 'hermes_cli.main', ...args],
+        hiddenWindowsChildOptions({
+          cwd: ACTIVE_HERMES_ROOT,
+          env: { ...process.env, HERMES_HOME, NO_COLOR: '1' },
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      )
+
+      child.stdout?.on('data', (chunk: Buffer): void => {
+        stdout += chunk.toString()
+      })
+      child.stderr?.on('data', (chunk: Buffer): void => {
+        stderr += chunk.toString()
+      })
+      child.on('error', (error: Error): void => done({ code: null, stdout, stderr: error.message }))
+      child.on('exit', (code: number | null): void => done({ code, stdout, stderr }))
+      timer = setTimeout((): void => {
+        child.kill()
+        done({ code: null, stdout, stderr: 'timeout' })
+      }, runTimeoutMs(args))
+    } catch (error) {
+      done({ code: null, stdout, stderr: error instanceof Error ? error.message : String(error) })
+    }
+  })
+}
+
+registerInstallsIpc({
+  ipcMain,
+  runInstalls: runInstallsCommand,
+  notice: installsNotice,
+  logDebug: message => rememberLog(message)
 })
 
 // Download a VS Code Marketplace extension and return the raw color-theme JSON
