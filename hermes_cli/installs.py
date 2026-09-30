@@ -49,11 +49,12 @@ _UNSAVED_WORK_PROBES = (
 _LAUNCHER_NAME = "hermes"
 _LAUNCHER_TEXT_BYTES = 262144
 
-_APPX_SCRIPT = (
+_UTF8_OUTPUT = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); "
+_APPX_SCRIPT = _UTF8_OUTPUT + (
     "Get-AppxPackage -Name 'NousResearch*' | "
     "Select-Object PackageFullName,InstallLocation | ConvertTo-Json -Compress"
 )
-_SHORTCUTS_SCRIPT = (
+_SHORTCUTS_SCRIPT = _UTF8_OUTPUT + (
     "$shell = New-Object -ComObject WScript.Shell; "
     "@('Desktop','CommonDesktopDirectory','Programs','CommonPrograms') | "
     "ForEach-Object { [Environment]::GetFolderPath($_) } | "
@@ -254,6 +255,7 @@ def _appx_packages(run: Runner, windows: bool) -> list[Candidate]:
         return []
     try:
         proc = run([*_POWERSHELL, _APPX_SCRIPT], capture_output=True, text=True,
+                   encoding="utf-8", errors="replace",
                    stdin=subprocess.DEVNULL, timeout=_POWERSHELL_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("Get-AppxPackage failed: %s", exc)
@@ -501,6 +503,7 @@ def _owned_launchers(root: Path, default_root: Path, windows: bool) -> tuple[Pat
 def _shortcuts_into(root: Path, run: Runner) -> tuple[Path, ...]:
     try:
         proc = run([*_POWERSHELL, _SHORTCUTS_SCRIPT], capture_output=True, text=True,
+                   encoding="utf-8", errors="replace",
                    stdin=subprocess.DEVNULL, timeout=_POWERSHELL_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("shortcut scan failed: %s", exc)
@@ -562,7 +565,8 @@ def execute_removal(plan: RemovalPlan, *, run: Runner = subprocess.run) -> int:
         return 0
     if plan.action == "appx":
         try:
-            proc = run(list(plan.command), capture_output=True, text=True,
+            proc = run([*plan.command[:-1], _UTF8_OUTPUT + plan.command[-1]], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace",
                        stdin=subprocess.DEVNULL, timeout=_APPX_REMOVE_TIMEOUT_S)
         except (OSError, subprocess.SubprocessError) as exc:
             print(f"Could not run PowerShell: {exc}", file=sys.stderr)

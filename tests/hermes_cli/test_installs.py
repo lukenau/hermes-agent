@@ -504,3 +504,28 @@ class TestCli:
 
         assert rc == 1
         assert "nope" in capsys.readouterr().err
+
+
+def test_powershell_calls_read_utf8_output(tmp_path):
+    seen = []
+
+    def run(cmd, **kwargs):
+        seen.append((list(cmd), kwargs))
+        return _ok("[]")
+
+    installs._appx_packages(run, True)
+    installs._shortcuts_into(tmp_path, run)
+    package = installs.Install(
+        id="x", root=tmp_path, steward="desktop-app", version=None, sources=("appx",),
+        package_full_name="Nous.Hermes_1_arm64__abc")
+    plan = installs.RemovalPlan(
+        package, "appx",
+        command=("powershell", "-NoProfile", "-NonInteractive", "-Command", "Remove-AppxPackage -Package Nous.Hermes_1_arm64__abc"))
+    installs.execute_removal(plan, run=run)
+
+    assert len(seen) == 3
+    for cmd, kwargs in seen:
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        assert cmd[-1].startswith("[Console]::OutputEncoding")
+    assert plan.command[-1] == "Remove-AppxPackage -Package Nous.Hermes_1_arm64__abc"
