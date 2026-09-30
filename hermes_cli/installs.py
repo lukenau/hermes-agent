@@ -572,11 +572,16 @@ def execute_removal(plan: RemovalPlan, *, run: Runner = subprocess.run) -> int:
         except OSError as exc:
             print(f"Could not remove {plan.tree}: {exc}", file=sys.stderr)
             return 1
+        failed = 0
         for leftover in (*plan.launchers, *plan.shortcuts):
             try:
                 leftover.unlink(missing_ok=True)
             except OSError as exc:
+                failed += 1
                 print(f"Could not remove {leftover}: {exc}", file=sys.stderr)
+        if failed:
+            print(f"The folder is removed, but {failed} launcher or shortcut file(s) remain.", file=sys.stderr)
+            return 1
         return 0
     if plan.action == "appx":
         try:

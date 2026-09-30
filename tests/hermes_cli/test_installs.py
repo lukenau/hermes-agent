@@ -437,6 +437,17 @@ class TestRemovalPlan:
 
         assert plan.launchers == (launcher,)
 
+    def test_a_launcher_that_cannot_be_removed_makes_the_command_fail(self, home, running, tmp_path):
+        managed = _checkout(home / "hermes-agent")
+        stuck = tmp_path / "stuck-launcher"
+        stuck.mkdir()
+        plan = installs.RemovalPlan(self._install(managed), "tree", tree=managed.resolve(), launchers=(stuck,))
+
+        assert installs.execute_removal(plan) == 1
+
+        assert not managed.exists()
+        assert stuck.exists()
+
     def test_managed_clone_removal_keeps_everything_the_installs_share(self, home, running):
         managed = _checkout(home / "hermes-agent")
         pack = managed / ".git" / "objects"
