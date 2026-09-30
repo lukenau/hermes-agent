@@ -140,7 +140,7 @@ def _empty_registry() -> dict:
 
 def read_registry() -> dict:
     try:
-        data = json.loads(registry_path().read_text(encoding="utf-8"))
+        data = json.loads(registry_path().read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return _empty_registry()
     if not isinstance(data, dict) or data.get("schema") != _SCHEMA:
@@ -241,7 +241,7 @@ def _bundle_repo_dirs(location: Path) -> list[Path]:
         return repos
     for manifest in manifests:
         try:
-            repo_dir = json.loads(manifest.read_text(encoding="utf-8")).get("runtime", {}).get("repoDir")
+            repo_dir = json.loads(manifest.read_text(encoding="utf-8-sig")).get("runtime", {}).get("repoDir")
         except (OSError, ValueError, AttributeError):
             continue
         if isinstance(repo_dir, str) and (manifest.parent / repo_dir).is_dir():
