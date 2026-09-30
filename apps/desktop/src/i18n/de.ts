@@ -858,6 +858,7 @@ export const deOverrides = {
       vaultSources: 'Passwortmanager',
       appUpdates: 'Version & Updates',
       uninstall: 'Deinstallieren',
+      installs: 'Installationen',
       billingOverview: 'Übersicht',
       billingPlans: 'Tarife'
     },
@@ -1612,6 +1613,33 @@ export const deOverrides = {
             'ALLES – die Chat-Oberfläche, den Hermes-Agent sowie Ihre gesamte Konfiguration, Chats, Geheimnisse und Logs'
         }
       }
+    },
+    installsPage: {
+      title: 'Installationen',
+      description: 'Hermes-Installationen auf diesem Rechner. Der erste `hermes`-Starter auf dem PATH gewinnt.',
+      loading: 'Installationen werden gelesen…',
+      loadFailed: 'Die Installationen konnten nicht gelesen werden. Der Hermes-Agent fehlt eventuell.',
+      reload: 'Erneut versuchen',
+      launcherWins: (path, owner) => `Ein neues Terminal startet \`hermes\` über ${path} (${owner} gewinnt).`,
+      launcherUnknown: 'keine bekannte Installation',
+      idLabel: 'ID:',
+      stewardLabel: 'Verwalter:',
+      versionLabel: 'Version:',
+      running: 'Laufend',
+      other: 'Andere',
+      remove: 'Entfernen',
+      confirmTitle: 'Entfernen bestätigen',
+      confirmBody:
+        'Der Installationsordner wird von diesem Rechner entfernt. Ihre Hermes-Daten bleiben unberührt. Dies kann nicht rückgängig gemacht werden.',
+      confirmYes: 'Ja, entfernen',
+      removing: 'Wird entfernt…',
+      removed: id => `Installation ${id} entfernt.`,
+      removeFailed: 'Das Entfernen ist fehlgeschlagen.',
+      noticeTitle: count =>
+        `${count} weitere Hermes-Installation${count === 1 ? '' : 'en'} auf diesem Rechner gefunden.`,
+      noticeBody: 'Öffnen Sie Einstellungen → Info → Installationen, um ungenutzte zu entfernen.',
+      openInstalls: 'Installationen ansehen',
+      hideNotice: 'Diesen Hinweis ausblenden'
     },
     poolLimits: {
       warmBotBackendsAria: 'Bot-Backends vorwärmen',

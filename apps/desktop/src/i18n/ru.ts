@@ -564,6 +564,7 @@ export const ru = defineLocale({
       vaultSources: 'Менеджеры паролей',
       appUpdates: 'Версия и обновления',
       uninstall: 'Удаление',
+      installs: 'Установки',
       billingOverview: 'Обзор',
       billingPlans: 'Тарифы'
     },

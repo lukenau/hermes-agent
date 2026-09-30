@@ -1126,6 +1126,31 @@ export interface Translations {
         full: { title: string; description: string; consequence: string }
       }
     }
+    installsPage: {
+      title: string
+      description: string
+      loading: string
+      loadFailed: string
+      reload: string
+      launcherWins: (path: string, owner: string) => string
+      launcherUnknown: string
+      idLabel: string
+      stewardLabel: string
+      versionLabel: string
+      running: string
+      other: string
+      remove: string
+      confirmTitle: string
+      confirmBody: string
+      confirmYes: string
+      removing: string
+      removed: (id: string) => string
+      removeFailed: string
+      noticeTitle: (count: number) => string
+      noticeBody: string
+      openInstalls: string
+      hideNotice: string
+    }
     poolLimits: {
       warmBotBackendsAria: string
       warmBotBackendsTitle: string

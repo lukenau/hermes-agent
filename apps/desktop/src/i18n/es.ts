@@ -859,6 +859,7 @@ export const esOverrides = {
       vaultSources: 'Gestores de contraseñas',
       appUpdates: 'Versión y actualizaciones',
       uninstall: 'Desinstalar',
+      installs: 'Instalaciones',
       billingOverview: 'Resumen',
       billingPlans: 'Planes'
     },
@@ -1613,6 +1614,33 @@ export const esOverrides = {
             'TODO: la interfaz de chat, el agente de Hermes y toda tu configuración, chats, secretos y registros'
         }
       }
+    },
+    installsPage: {
+      title: 'Instalaciones',
+      description: 'Instalaciones de Hermes en esta máquina. El primer lanzador `hermes` del PATH gana.',
+      loading: 'Leyendo las instalaciones…',
+      loadFailed: 'No se pudieron leer las instalaciones. Puede faltar el agente Hermes.',
+      reload: 'Reintentar',
+      launcherWins: (path, owner) => `Una terminal nueva ejecuta \`hermes\` desde ${path} (${owner} gana).`,
+      launcherUnknown: 'instalación desconocida',
+      idLabel: 'ID:',
+      stewardLabel: 'Responsable:',
+      versionLabel: 'Versión:',
+      running: 'En uso',
+      other: 'Otra',
+      remove: 'Quitar',
+      confirmTitle: 'Confirmar la eliminación',
+      confirmBody:
+        'Se quita la carpeta de instalación de esta máquina. Sus datos de Hermes quedan intactos. Esto no se puede deshacer.',
+      confirmYes: 'Sí, quitar',
+      removing: 'Quitando…',
+      removed: id => `Instalación ${id} eliminada.`,
+      removeFailed: 'La eliminación falló.',
+      noticeTitle: count =>
+        `Se encontraron ${count} otra${count === 1 ? '' : 's'} instalación${count === 1 ? '' : 'es'} de Hermes en esta máquina.`,
+      noticeBody: 'Abra Ajustes → Acerca de → Instalaciones para quitar las que no usa.',
+      openInstalls: 'Ver instalaciones',
+      hideNotice: 'Ocultar este aviso'
     },
     poolLimits: {
       warmBotBackendsAria: 'Backends de bots en caliente',

@@ -918,6 +918,7 @@ export const en: Translations = {
       vaultSources: 'Password managers',
       appUpdates: 'Version & updates',
       uninstall: 'Uninstall',
+      installs: 'Installs',
       billingOverview: 'Overview',
       billingPlans: 'Plans'
     },
@@ -1358,6 +1359,32 @@ export const en: Translations = {
           consequence: 'EVERYTHING — the Chat GUI, the Hermes agent, and all of your config, chats, secrets, and logs'
         }
       }
+    },
+    installsPage: {
+      title: 'Installs',
+      description: 'Hermes installs on this machine. The first `hermes` launcher on PATH wins.',
+      loading: 'Reading the installs…',
+      loadFailed: 'Could not read the installs. The Hermes agent may be missing.',
+      reload: 'Retry',
+      launcherWins: (path, owner) => `A new terminal runs \`hermes\` from ${path} (${owner} wins).`,
+      launcherUnknown: 'no known install',
+      idLabel: 'ID:',
+      stewardLabel: 'Steward:',
+      versionLabel: 'Version:',
+      running: 'Running',
+      other: 'Other',
+      remove: 'Remove',
+      confirmTitle: 'Confirm removal',
+      confirmBody:
+        'This removes the install folder from this machine. Your Hermes data is untouched. This cannot be undone.',
+      confirmYes: 'Yes, remove',
+      removing: 'Removing…',
+      removed: id => `Removed install ${id}.`,
+      removeFailed: 'Removal failed.',
+      noticeTitle: count => `Found ${count} other Hermes install${count === 1 ? '' : 's'} on this machine.`,
+      noticeBody: 'Open Settings → About → Installs to remove the ones you do not use.',
+      openInstalls: 'View installs',
+      hideNotice: 'Hide this notice'
     },
     poolLimits: {
       warmBotBackendsAria: 'Warm bot backends',
