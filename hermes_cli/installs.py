@@ -581,12 +581,22 @@ def execute_removal(plan: RemovalPlan, *, run: Runner = subprocess.run) -> int:
 # --- launch notice ----------------------------------------------------------
 
 
-def launch_notice(*, current: Path | None = None) -> str | None:
-    """One line about other installs, or None. Uses only cheap sources, so it is safe at launch."""
+def notice_state(*, current: Path | None = None) -> dict:
+    """How many other installs the launch notice counts, and whether the user hid the notice.
+
+    Uses only cheap sources, so it is safe at launch. ``list --json`` reports the same values.
+    """
     others = _others(current)
-    if not others or read_registry()["dismissed"] == fingerprint(others):
+    hidden = bool(others) and read_registry()["dismissed"] == fingerprint(others)
+    return {"count": len(others), "dismissed": hidden}
+
+
+def launch_notice(*, current: Path | None = None) -> str | None:
+    """One line about other installs, or None."""
+    state = notice_state(current=current)
+    count = state["count"]
+    if not count or state["dismissed"]:
         return None
-    count = len(others)
     return (
         f"{count} other Hermes install{'s' if count != 1 else ''} found on this machine. "
         f"Run `hermes installs` to see {'them' if count != 1 else 'it'}, "
@@ -709,6 +719,7 @@ def run_cli(args, *, run: Runner = subprocess.run) -> int:
             "current": install_id(current),
             "installs": entries,
             "launchers": [{"path": str(lnch.path), "owner": lnch.owner} for lnch in launchers],
+            "notice": notice_state(current=current),
         }, indent=2))
     else:
         _print_list(entries, launchers)
