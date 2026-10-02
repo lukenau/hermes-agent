@@ -30,8 +30,8 @@ from tools.delegate_tool_child_run import (  # noqa: F401
 from tools.delegate_tool_config import (  # noqa: F401
     _DEFAULT_MAX_CONCURRENT_CHILDREN, _get_child_timeout, _get_max_async_children, _get_max_concurrent_children,
     _get_max_spawn_depth, _get_oneshot_max_children, _get_orchestrator_enabled, _get_subagent_approval_callback, _get_worktree_isolation,
-    _inherit_parent_capabilities, _load_config, _merge_request_overrides, _resolve_child_credential_pool,
-    _resolve_child_runtime, _resolve_delegation_credentials,
+    _coerce_task_credentials, _inherit_parent_capabilities, _load_config, _merge_request_overrides,
+    _resolve_child_credential_pool, _resolve_child_runtime, _resolve_delegation_credentials, _task_credentials,
     _subagent_auto_approve, _subagent_auto_deny,
 )
 from tools.delegate_tool_dispatch import _Batch, _announce_batch, _capture_origin, _run_batch
@@ -366,21 +366,26 @@ def _build_children(
     task_list: List[Dict[str, Any]], task_schemas: List[Optional[Dict[str, Any]]], creds: Dict[str, Any], *,
     top_role: str, max_iterations: int, parent_agent, routing_cfg: Dict[str, Any],
     live_deleg_id: Optional[str], live_writers: list, task_images: Optional[List[Optional[List[str]]]] = None,
+    task_creds_list: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[List[tuple], Optional[str]]:
     """Build every child on the main thread (construction is not thread-safe);
     ``(children, None)`` or ``([], error)`` on an explicit-pin preflight failure."""
     from tools.delegation_live_log import wrap_progress_callback
     from tools.delegation_output_schema import append_output_contract
-    overrides = {
-        "override_provider": creds["provider"], "override_base_url": creds["base_url"],
-        "override_api_key": creds["api_key"], "override_api_mode": creds["api_mode"],
-        "override_request_overrides": creds.get("request_overrides"),
-        "override_acp_command": creds.get("command"),
-        "override_acp_args": creds.get("args"),
-        "routing_cfg": routing_cfg,
-    }
     children = []
     for i, t in enumerate(task_list):
+        # Per-task model/provider/base_url pin (see _task_credentials): identical to the batch's own `creds`
+        # when the task carries none of those keys -- today's behaviour, byte for byte. Pre-resolved by
+        # _coerce_task_credentials() before this loop started, so a bad pin never gets this far.
+        task_creds = task_creds_list[i] if task_creds_list and i < len(task_creds_list) else creds
+        overrides = {
+            "override_provider": task_creds["provider"], "override_base_url": task_creds["base_url"],
+            "override_api_key": task_creds["api_key"], "override_api_mode": task_creds["api_mode"],
+            "override_request_overrides": task_creds.get("request_overrides"),
+            "override_acp_command": task_creds.get("command"),
+            "override_acp_args": task_creds.get("args"),
+            "routing_cfg": routing_cfg,
+        }
         _task_schema = task_schemas[i] if i < len(task_schemas) else None
         _child_context = t.get("context")
         if _task_schema is not None:
@@ -389,7 +394,7 @@ def _build_children(
             child = _build_child_preserving_parent_tools(
                 task_index=i, goal=t["goal"], context=_child_context,
                 toolsets=None,  # always inherit the parent's toolsets
-                model=creds["model"], max_iterations=max_iterations, task_count=len(task_list),
+                model=task_creds["model"], max_iterations=max_iterations, task_count=len(task_list),
                 parent_agent=parent_agent, role=_normalize_role(t.get("role") or top_role), **overrides,
             )
         except ValueError as exc:
@@ -443,11 +448,14 @@ def delegate_task(
     output_schema: Optional[Dict[str, Any]] = None, images: Optional[List[str]] = None, action: Optional[str] = None,
     subagent_id: Optional[str] = None, message: Optional[str] = None, parent_agent=None,
     credentials_cfg: Optional[Dict[str, Any]] = None,
+    model: Optional[str] = None, provider: Optional[str] = None, base_url: Optional[str] = None,
 ) -> str:
     """Spawn child agents (single ``goal`` or ``tasks=[...]`` batch) or control running ones. ``action``
     list/steer/stop run synchronously and bypass the pause gate, depth limit and async dispatch. ``role`` is legacy
-    (per-task beats top-level; capability is depth-derived). Returns JSON with one results entry per task, or a
-    dispatch handle when running in the background."""
+    (per-task beats top-level; capability is depth-derived). ``model``/``provider``/``base_url`` (top-level, for the
+    legacy single-``goal`` shape, or per-entry inside ``tasks=[...]``) pin that one child's route; absent, the
+    child keeps today's single shared ``delegation.model``/``delegation.provider`` default. Returns JSON with one
+    results entry per task, or a dispatch handle when running in the background."""
     if parent_agent is None:
         return tool_error("delegate_task requires a parent agent context.")
 
@@ -498,11 +506,15 @@ def delegate_task(
         # spawn loudly (#80450).
         return tool_error(str(exc))
     max_children = _get_max_concurrent_children()
-    task_list, err = _normalize_task_list(goal, context, tasks, output_schema, top_role, max_children)
+    task_list, err = _normalize_task_list(
+        goal, context, tasks, output_schema, top_role, max_children, model=model, provider=provider, base_url=base_url,
+    )
     if not err:
         task_schemas, err = _coerce_task_schemas(task_list, output_schema)
     if not err:
         task_images, err = _coerce_task_images(task_list, images)
+    if not err:
+        task_creds_list, err = _coerce_task_credentials(task_list, routing_cfg, creds, parent_agent)
     if err:
         return tool_error(err)
     err = _oneshot_spawn_budget(parent_agent, len(task_list))
@@ -522,6 +534,7 @@ def delegate_task(
     children, err = _build_children(
         task_list, task_schemas, creds, top_role=top_role, max_iterations=default_max_iter, parent_agent=parent_agent,
         routing_cfg=routing_cfg, live_deleg_id=live_deleg_id, live_writers=live_writers, task_images=task_images,
+        task_creds_list=task_creds_list,
     )
     if err:
         return tool_error(err)
@@ -590,7 +603,9 @@ _DESCRIPTION_HEAD = (
     "the parent applies the transition.\n"
 )
 _DESCRIPTION_TAIL = (
-    "- Children inherit the parent model unless pinned via delegation.provider / delegation.model in config.yaml."
+    "- Children inherit the parent model unless pinned via delegation.provider / delegation.model in config.yaml, "
+    "or per-task via 'model' / 'provider' / 'base_url' in a tasks=[...] entry (that task's child only; siblings "
+    "keep their own route)."
 )
 
 def _build_tasks_param_description() -> str:
@@ -684,6 +699,23 @@ DELEGATE_TASK_SCHEMA = {
                             "is enabled; otherwise the whole call returns as one message). Tasks sharing a group return "
                             "together in ONE message; ungrouped tasks return individually as each finishes. This does not "
                             "order execution; if B needs A's output, dispatch B after A returns.",
+                        ),
+                        "model": _p(
+                            "string",
+                            "Pin THIS task's child to a specific model instead of the assignee profile's configured model. "
+                            "Use the exact model name the target provider expects. Omit to use the profile default.",
+                        ),
+                        "provider": _p(
+                            "string",
+                            "Provider the 'model' belongs to (e.g. 'openrouter', 'anthropic', 'nous'). Set this whenever "
+                            "the model is not from the assignee profile's configured provider — a model name alone is "
+                            "resolved against the profile's provider and will fail if it belongs to a different one. "
+                            "Requires 'model'.",
+                        ),
+                        "base_url": _p(
+                            "string",
+                            "Direct endpoint URL for this task's child, for a provider not in the built-in catalog. "
+                            "Rarely needed alongside 'provider' — prefer 'provider' when the target is a known one.",
                         ),
                     },
                     "required": ["goal"],

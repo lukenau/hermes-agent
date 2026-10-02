@@ -434,6 +434,59 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
         )
     return _runtime_provider_credentials(values, explicit_request_overrides)
 
+def _task_credentials(
+    task: Dict[str, Any], routing_cfg: Optional[Dict[str, Any]], batch_creds: Dict[str, Any], parent_agent,
+) -> tuple[Dict[str, Any], Optional[str]]:
+    """``(creds, None)`` for one task in a batch, or ``(partial_bundle, error)`` on an explicit-pin failure.
+
+    Absent a per-task ``model``/``provider``/``base_url``, returns ``batch_creds`` UNCHANGED — the regression
+    guard: every existing caller that never pinned a task keeps today's exact single shared route. When a task
+    pins one or more of those keys, they are merged onto a COPY of ``routing_cfg`` (the same config dict the
+    batch default was itself resolved from) and run back through ``_resolve_delegation_credentials`` — so a
+    per-task ``provider`` gets the identical validation a top-level ``delegation.provider`` pin already gets
+    (``resolve_runtime_provider`` raising "Unknown provider ..." for a bad name) and the result still reaches
+    the child only through the existing override_provider/override_base_url/model path built in
+    ``_build_children`` -- never a new parallel mechanism.
+
+    A ``model`` pinned with no ``provider``/``base_url`` deliberately does NOT force any particular transport:
+    merged onto ``routing_cfg`` alone, ``_resolve_delegation_credentials`` keeps whatever provider/base_url that
+    task would already have used (the batch's configured ``delegation.provider`` if one is set, the parent's
+    inherited route otherwise) and only swaps the model id -- the same "model-only" behaviour a bare
+    ``delegation.model`` (with no ``delegation.provider``) already has for the whole batch. Deliberate choice:
+    a model-only pin changes *what* runs, not *where* it runs.
+    """
+    pin_model = task.get("model")
+    pin_provider = task.get("provider")
+    pin_base_url = task.get("base_url")
+    if not (pin_model or pin_provider or pin_base_url):
+        return batch_creds, None
+    merged_cfg = dict(routing_cfg) if isinstance(routing_cfg, dict) else {}
+    if pin_model:
+        merged_cfg["model"] = pin_model
+    if pin_provider:
+        merged_cfg["provider"] = pin_provider
+    if pin_base_url:
+        merged_cfg["base_url"] = pin_base_url
+    try:
+        return _resolve_delegation_credentials(merged_cfg, parent_agent), None
+    except ValueError as exc:
+        return {}, str(exc)
+
+def _coerce_task_credentials(
+    task_list: List[Dict[str, Any]], routing_cfg: Optional[Dict[str, Any]], batch_creds: Dict[str, Any], parent_agent,
+) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """Per-task credential bundles for the WHOLE batch, resolved before any child is built -- a bad per-task
+    ``provider`` pin fails the whole call with zero children constructed, the same preflight guarantee the
+    batch-level ``delegation.provider``/``delegation.command`` pin already has (``_resolve_delegation_credentials``
+    above). Mirrors ``_coerce_task_schemas``/``_coerce_task_images``: validate every task first, build second."""
+    resolved: List[Dict[str, Any]] = []
+    for i, task in enumerate(task_list):
+        task_creds, err = _task_credentials(task, routing_cfg, batch_creds, parent_agent)
+        if err:
+            return [], f"Task {i}: {err}"
+        resolved.append(task_creds)
+    return resolved, None
+
 def _load_config() -> dict:
     """The ``delegation`` config section (read-only — do NOT mutate). Prefers the shared ``load_config_readonly()``
     (follows HERMES_HOME/profile; no deepcopy, since this runs on every get_definitions() rebuild) over the legacy

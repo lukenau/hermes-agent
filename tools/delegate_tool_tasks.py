@@ -64,10 +64,20 @@ def _validate_batch_tasks(task_list: List[Dict[str, Any]]) -> Optional[str]:
             )
     return None
 
+# Per-task routing pin keys (see delegate_tool_config._task_credentials). Validated the same way for both the
+# ``tasks=[...]`` shape and the legacy single-``goal`` wrap below: non-empty strings or absent, nothing else.
+_ROUTE_PIN_KEYS = ("model", "provider", "base_url")
+
 def _normalize_task_list(
-    goal, context, tasks, output_schema, top_role: str, max_children: int
+    goal, context, tasks, output_schema, top_role: str, max_children: int, *,
+    model=None, provider=None, base_url=None,
 ) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-    """``(task_list, None)`` from ``tasks=[...]`` or the legacy single ``goal``, else ``(None, error)``."""
+    """``(task_list, None)`` from ``tasks=[...]`` or the legacy single ``goal``, else ``(None, error)``.
+
+    ``model``/``provider``/``base_url`` are the legacy single-task-shape counterparts of the per-task keys a
+    ``tasks=[...]`` entry may already carry (see ``_ROUTE_PIN_KEYS``) — they only apply when the call is the
+    single top-level ``goal`` form, exactly like ``output_schema`` above them.
+    """
     recovered_tasks, tasks_error = _recover_tasks_from_json_string(tasks)
     if tasks_error:
         return None, tasks_error
@@ -89,6 +99,9 @@ def _normalize_task_list(
         task_list = [{"goal": goal, "context": context, "role": top_role}]
         if output_schema is not None:
             task_list[0]["output_schema"] = output_schema
+        for key, value in (("model", model), ("provider", provider), ("base_url", base_url)):
+            if value is not None:
+                task_list[0][key] = value
     else:
         return None, (
             "No tasks provided. Pass tasks=[{goal: '...', context: '...'}, "
@@ -100,6 +113,10 @@ def _normalize_task_list(
             return None, f"Task {i} must be an object, got {type(task).__name__}."
         if not task.get("goal", "").strip():
             return None, f"Task {i} is missing a 'goal'."
+        for key in _ROUTE_PIN_KEYS:
+            value = task.get(key)
+            if value is not None and not (isinstance(value, str) and value.strip()):
+                return None, f"Task {i} '{key}' must be a non-empty string."
     # The single-goal form is exempt from the batch gate (short goals are valid there).
     batch_error = _validate_batch_tasks(task_list) if isinstance(tasks, list) else None
     return (None, batch_error) if batch_error else (task_list, None)
